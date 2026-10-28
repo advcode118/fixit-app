@@ -1,11 +1,17 @@
 import { AccessibilityIssue, CodeFix } from '@/types';
 
+interface DocumentLike {
+  querySelectorAll(selectors: string): NodeListOf<Element>;
+  querySelector(selectors: string): Element | null;
+  documentElement: Element;
+}
+
 export interface RuleCheck {
   id: string;
   name: string;
   category: 'accessibility' | 'seo' | 'performance' | 'best-practices';
   wcagRule?: string;
-  check: (doc: Document) => AccessibilityIssue[];
+  check: (doc: DocumentLike) => AccessibilityIssue[];
 }
 
 function generateId(): string {

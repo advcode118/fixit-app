@@ -1,11 +1,10 @@
 import { NextRequest } from 'next/server';
-import { JSDOM } from 'jsdom';
+import { parseHTML } from 'linkedom';
 import { accessibilityRules, generateDeterministicFix, calculateScore } from '@/lib/accessibility-rules';
 import { rankAndExplainIssues, generateLLMFixes, generateFixedHTML } from '@/lib/llm';
 import { AccessibilityIssue, AuditStreamEvent, CodeFix } from '@/types';
 
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 function createSSEEncoder() {
   const encoder = new TextEncoder();
@@ -75,8 +74,7 @@ export async function POST(request: NextRequest) {
 
         await sendEvent({ type: 'progress', message: 'Parsing HTML document...' });
 
-        const dom = new JSDOM(html);
-        const document = dom.window.document;
+        const { document } = parseHTML(html);
 
         await sendEvent({ type: 'progress', message: 'Running accessibility checks...' });
 
