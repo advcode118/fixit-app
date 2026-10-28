@@ -9,9 +9,20 @@ import {
   PRResult,
 } from '@/types';
 import { demoFixedHTML, demoHTML, getDemoAuditResult } from '@/lib/demo-data';
+import {
+  getPdaDemoAuditResult,
+  pdaFixedHTML,
+  pdaHTML,
+  pdaPrResult,
+  pdaSteps,
+  PDA_REPO,
+  PDA_URL,
+} from '@/lib/demo-pda';
 
 export const EXAMPLE_URL = 'https://advcode118.github.io/fixit-demo-target/';
 export const EXAMPLE_REPO = 'advcode118/fixit-demo-target';
+
+export type DemoKey = 'studio' | 'pda';
 
 export interface ActivityItem {
   id: string;
@@ -33,6 +44,7 @@ export interface AuditViewState {
   prResult: PRResult | null;
   prError: string | null;
   demoMode: boolean;
+  demoKey: DemoKey;
   urlError: string | null;
   repoError: string | null;
 }
@@ -116,6 +128,7 @@ export class AuditView extends React.Component<object, AuditViewState> {
       prResult: null,
       prError: null,
       demoMode: false,
+      demoKey: 'studio',
       urlError: null,
       repoError: null,
     };
@@ -198,13 +211,14 @@ export class AuditView extends React.Component<object, AuditViewState> {
     });
   };
 
-  startSample = () => {
+  playDemo = (demoKey: DemoKey) => {
     if (this.state.isAuditing) return;
     this.setState(
       {
         demoMode: true,
-        url: EXAMPLE_URL,
-        repo: EXAMPLE_REPO,
+        demoKey,
+        url: demoKey === 'pda' ? PDA_URL : EXAMPLE_URL,
+        repo: demoKey === 'pda' ? PDA_REPO : EXAMPLE_REPO,
         urlError: null,
         repoError: null,
       },
@@ -213,6 +227,23 @@ export class AuditView extends React.Component<object, AuditViewState> {
       },
     );
   };
+
+  startSample = () => {
+    this.playDemo('studio');
+  };
+
+  startPdaDemo = () => {
+    this.playDemo('pda');
+  };
+
+  isPdaDemo(): boolean {
+    return this.state.demoMode && this.state.demoKey === 'pda';
+  }
+
+  demoCaption(): string {
+    if (this.state.demoKey === 'pda') return 'Demo 2 · pda.archi';
+    return 'Sample report for the demo target.';
+  }
 
   addActivity = (type: ActivityItem['type'], message: string) => {
     const item: ActivityItem = {
@@ -238,14 +269,17 @@ export class AuditView extends React.Component<object, AuditViewState> {
       expandedIssueId: null,
     });
 
-    for (const step of DEMO_STEPS) {
+    const pda = this.state.demoKey === 'pda';
+    const steps = pda ? pdaSteps : DEMO_STEPS;
+
+    for (const step of steps) {
       await wait(step.delay);
       if (!this.mounted || this.runToken !== token) return;
       this.addActivity(step.type, step.message);
     }
 
     if (!this.mounted || this.runToken !== token) return;
-    this.commit({ isAuditing: false, auditResult: getDemoAuditResult() });
+    this.commit({ isAuditing: false, auditResult: pda ? getPdaDemoAuditResult() : getDemoAuditResult() });
   };
 
   handleStreamEvent = (event: AuditStreamEvent) => {
@@ -357,12 +391,14 @@ export class AuditView extends React.Component<object, AuditViewState> {
       if (!this.mounted) return;
       this.commit({
         isCreatingPR: false,
-        prResult: {
-          success: true,
-          prUrl: 'https://github.com/advcode118/fixit-demo-target/pull/1',
-          branch: 'fixit/auto-fixes-demo',
-          filesChanged: 1,
-        },
+        prResult: this.state.demoKey === 'pda'
+          ? pdaPrResult
+          : {
+              success: true,
+              prUrl: 'https://github.com/advcode118/fixit-demo-target/pull/1',
+              branch: 'fixit/auto-fixes-demo',
+              filesChanged: 1,
+            },
       });
       return;
     }
@@ -440,12 +476,12 @@ export class AuditView extends React.Component<object, AuditViewState> {
   }
 
   beforeMarkup(): string {
-    if (this.state.demoMode) return demoHTML;
+    if (this.state.demoMode) return this.state.demoKey === 'pda' ? pdaHTML : demoHTML;
     return this.state.auditResult?.sourceHtml || '';
   }
 
   afterMarkup(): string {
-    if (this.state.demoMode) return demoFixedHTML;
+    if (this.state.demoMode) return this.state.demoKey === 'pda' ? pdaFixedHTML : demoFixedHTML;
     return this.state.auditResult?.html || '';
   }
 

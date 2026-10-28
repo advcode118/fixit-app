@@ -93,6 +93,9 @@ export default class FolioPage extends AuditView {
                     <button type="button" onClick={this.startSample} disabled={isAuditing} className="text-left underline decoration-1 underline-offset-4 disabled:opacity-50">
                       Play the sample
                     </button>
+                    <button type="button" onClick={this.startPdaDemo} disabled={isAuditing} className="text-left underline decoration-1 underline-offset-4 disabled:opacity-50">
+                      Play demo 2
+                    </button>
                   </div>
                 </form>
               </div>
@@ -126,7 +129,7 @@ export default class FolioPage extends AuditView {
             <div className="mt-8">
               <div className="flex flex-wrap items-end justify-between gap-4 border-b pb-4" style={{ borderColor: ink.ink }}>
                 <p className="max-w-xl text-lg leading-snug">
-                  {demoMode ? 'Sample report for the demo target.' : auditResult.url}
+                  {demoMode ? this.demoCaption() : auditResult.url}
                 </p>
                 <button type="button" onClick={this.reset} className="underline underline-offset-4">
                   Start another
