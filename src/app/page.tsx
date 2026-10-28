@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GitPullRequest, RefreshCw } from 'lucide-react';
 
@@ -315,6 +316,11 @@ class Home extends React.Component<object, HomeState> {
 
     return (
       <div className="min-h-screen bg-zinc-950">
+        <div className="mx-auto flex max-w-6xl justify-end px-6 pt-6">
+          <Link href="/designs" className="text-sm text-zinc-400 underline decoration-zinc-600 underline-offset-4 hover:text-white">
+            Five redesigns
+          </Link>
+        </div>
         <Hero
           url={url}
           repo={repo}
