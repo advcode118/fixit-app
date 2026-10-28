@@ -40,6 +40,7 @@ export interface AuditResult {
     };
   };
   html?: string;
+  sourceHtml?: string;
 }
 
 export interface AuditStreamEvent {

@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
             fixes,
             summary,
             html: fixedHtml,
+            sourceHtml: html,
           },
         });
       } catch (error) {
