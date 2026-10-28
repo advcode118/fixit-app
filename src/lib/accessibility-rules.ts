@@ -550,26 +550,217 @@ export const accessibilityRules: RuleCheck[] = [
   },
 ];
 
+function inferAltText(element: string, html: string): string {
+  const srcMatch = element.match(/src=["']([^"']+)["']/i);
+  if (srcMatch) {
+    const src = srcMatch[1];
+
+    const seedMatch = src.match(/seed\/([a-zA-Z][a-zA-Z0-9_-]*)/i);
+    if (seedMatch) {
+      const seed = seedMatch[1].replace(/[-_]/g, ' ').replace(/\d+$/, '').trim();
+      if (seed.length > 1) {
+        const formatted = seed.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        return formatted + ' image';
+      }
+    }
+
+    const picsumMatch = src.match(/picsum\.photos/i);
+    if (picsumMatch && !seedMatch) {
+      return 'Stock photo';
+    }
+
+    const pathParts = src.split('/').filter(p => p && !p.match(/^\d+$/) && !p.includes('.'));
+    for (let i = pathParts.length - 1; i >= 0; i--) {
+      const part = pathParts[i];
+      if (part && part.length > 2 && !part.match(/^(http|https|www|images?|img|assets?|static|uploads?|media|seed|\d+x\d+)$/i)) {
+        const readable = part.replace(/[-_]/g, ' ').replace(/\d+$/g, '').trim();
+        if (readable.length > 2) {
+          const formatted = readable.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          return formatted + ' image';
+        }
+      }
+    }
+
+    const filename = src.split('/').pop()?.split('?')[0] || '';
+    const nameWithoutExt = filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').replace(/\d+/g, ' ').trim();
+    
+    if (nameWithoutExt && nameWithoutExt.length > 2 && !nameWithoutExt.match(/^(img|image|photo|pic)$/i)) {
+      const formatted = nameWithoutExt.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      return formatted + ' image';
+    }
+  }
+
+  const classMatch = element.match(/class=["']([^"']+)["']/i);
+  if (classMatch) {
+    const classes = classMatch[1].split(/\s+/);
+    for (const cls of classes) {
+      if (cls.includes('hero') || cls.includes('banner')) return 'Hero banner image';
+      if (cls.includes('logo')) return 'Company logo';
+      if (cls.includes('avatar') || cls.includes('profile')) return 'User profile picture';
+      if (cls.includes('icon')) return 'Decorative icon';
+      if (cls.includes('product')) return 'Product image';
+      if (cls.includes('thumbnail') || cls.includes('thumb')) return 'Thumbnail image';
+      if (cls.includes('card')) return 'Card image';
+      if (cls.includes('cover')) return 'Cover image';
+      if (cls.includes('background') || cls.includes('bg')) return 'Background image';
+    }
+  }
+
+  return 'Decorative image';
+}
+
+function inferFormLabel(element: string): string {
+  const placeholderMatch = element.match(/placeholder=["']([^"']+)["']/i);
+  if (placeholderMatch) {
+    const placeholder = placeholderMatch[1];
+    return placeholder.charAt(0).toUpperCase() + placeholder.slice(1);
+  }
+
+  const nameMatch = element.match(/name=["']([^"']+)["']/i);
+  if (nameMatch) {
+    const name = nameMatch[1].replace(/[-_]/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  const typeMatch = element.match(/type=["']([^"']+)["']/i);
+  if (typeMatch) {
+    const type = typeMatch[1].toLowerCase();
+    const typeLabels: Record<string, string> = {
+      'email': 'Email address',
+      'password': 'Password',
+      'tel': 'Phone number',
+      'url': 'Website URL',
+      'search': 'Search',
+      'number': 'Number',
+      'date': 'Date',
+      'time': 'Time',
+      'file': 'File upload',
+      'text': 'Text input',
+    };
+    if (typeLabels[type]) return typeLabels[type];
+  }
+
+  const idMatch = element.match(/id=["']([^"']+)["']/i);
+  if (idMatch) {
+    const id = idMatch[1].replace(/[-_]/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+    return id.charAt(0).toUpperCase() + id.slice(1);
+  }
+
+  return 'Input field';
+}
+
+function inferButtonLabel(element: string, html: string): string {
+  const innerMatch = element.match(/>([^<]*)</);
+  if (innerMatch && innerMatch[1].trim()) {
+    const text = innerMatch[1].trim();
+    if (text && !text.match(/^[\s☰×✕✖✗]+$/)) {
+      return text;
+    }
+  }
+
+  if (element.includes('☰') || element.toLowerCase().includes('menu') || element.toLowerCase().includes('hamburger')) {
+    return 'Open navigation menu';
+  }
+  if (element.includes('×') || element.includes('✕') || element.includes('✖') || element.includes('close')) {
+    return 'Close';
+  }
+  if (element.toLowerCase().includes('submit')) return 'Submit form';
+  if (element.toLowerCase().includes('search')) return 'Search';
+  if (element.toLowerCase().includes('cart') || element.toLowerCase().includes('bag')) return 'Shopping cart';
+  if (element.toLowerCase().includes('add')) return 'Add item';
+  if (element.toLowerCase().includes('delete') || element.toLowerCase().includes('remove')) return 'Remove item';
+
+  const classMatch = element.match(/class=["']([^"']+)["']/i);
+  if (classMatch) {
+    const classes = classMatch[1].toLowerCase();
+    if (classes.includes('close')) return 'Close';
+    if (classes.includes('submit')) return 'Submit';
+    if (classes.includes('cancel')) return 'Cancel';
+    if (classes.includes('save')) return 'Save';
+    if (classes.includes('edit')) return 'Edit';
+    if (classes.includes('delete')) return 'Delete';
+    if (classes.includes('next')) return 'Next';
+    if (classes.includes('prev')) return 'Previous';
+    if (classes.includes('play')) return 'Play';
+    if (classes.includes('pause')) return 'Pause';
+  }
+
+  return 'Interactive button';
+}
+
+function inferLinkDestination(element: string): string {
+  const hrefMatch = element.match(/href=["']([^"']+)["']/i);
+  if (hrefMatch) {
+    const href = hrefMatch[1];
+    if (href === '#' || href === '') return 'Navigate to section';
+    if (href.startsWith('mailto:')) return 'Send email';
+    if (href.startsWith('tel:')) return 'Call phone number';
+    if (href.includes('facebook')) return 'Visit Facebook page';
+    if (href.includes('twitter') || href.includes('x.com')) return 'Visit Twitter/X profile';
+    if (href.includes('linkedin')) return 'Visit LinkedIn profile';
+    if (href.includes('instagram')) return 'Visit Instagram profile';
+    if (href.includes('github')) return 'Visit GitHub repository';
+
+    const path = href.split('?')[0].split('#')[0];
+    const lastSegment = path.split('/').filter(Boolean).pop();
+    if (lastSegment) {
+      const readable = lastSegment.replace(/[-_]/g, ' ').replace(/\.[^.]+$/, '');
+      if (readable.length > 1) {
+        return 'Go to ' + readable.charAt(0).toUpperCase() + readable.slice(1);
+      }
+    }
+  }
+
+  return 'Navigate to page';
+}
+
+function inferPageTitle(html: string): string {
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  if (h1Match) {
+    return h1Match[1].trim();
+  }
+
+  const brandMatch = html.match(/class=["'][^"']*(?:brand|logo|site-name)[^"']*["'][^>]*>([^<]+)</i);
+  if (brandMatch) {
+    return brandMatch[1].trim();
+  }
+
+  const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  if (ogTitleMatch) {
+    return ogTitleMatch[1];
+  }
+
+  return 'Website';
+}
+
+function inferMetaDescription(html: string): string {
+  const firstPMatch = html.match(/<p[^>]*>([^<]{20,150})/i);
+  if (firstPMatch) {
+    let text = firstPMatch[1].trim();
+    if (text.length > 155) {
+      text = text.substring(0, 152) + '...';
+    }
+    return text;
+  }
+
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  if (h1Match) {
+    return h1Match[1].trim() + ' - Official website';
+  }
+
+  return 'Welcome to our website. Explore our products and services.';
+}
+
 export function generateDeterministicFix(issue: AccessibilityIssue, html: string): CodeFix | null {
   const fixes: Record<string, (issue: AccessibilityIssue, html: string) => CodeFix | null> = {
     'img-alt': (issue, html) => {
       if (issue.description.includes('missing alt')) {
-        const imgMatch = html.match(new RegExp(`<img[^>]*${escapeRegex(issue.selector.replace('#', 'id="').replace('.', 'class="'))}[^>]*>`, 'i'));
-        if (imgMatch) {
-          const original = imgMatch[0];
-          const fixed = original.replace(/<img/, '<img alt="[Descriptive image text]"');
-          return {
-            file: 'index.html',
-            originalCode: original,
-            fixedCode: fixed,
-            explanation: 'Added alt attribute to image for screen reader accessibility',
-          };
-        }
+        const altText = inferAltText(issue.element, html);
         return {
           file: 'index.html',
           originalCode: issue.element,
-          fixedCode: issue.element.replace(/<img/, '<img alt="[Descriptive image text]"'),
-          explanation: 'Added alt attribute to image for screen reader accessibility',
+          fixedCode: issue.element.replace(/<img/, `<img alt="${altText}"`),
+          explanation: `Added descriptive alt text: "${altText}"`,
         };
       }
       return null;
@@ -578,32 +769,80 @@ export function generateDeterministicFix(issue: AccessibilityIssue, html: string
       const inputMatch = issue.element.match(/<(input|select|textarea)[^>]*>/i);
       if (inputMatch) {
         const original = inputMatch[0];
-        const inputId = `input-${Math.random().toString(36).substring(2, 8)}`;
-        const fixed = original.replace(/<(input|select|textarea)/, `<$1 id="${inputId}" aria-label="[Field description]"`);
+        const typeMatch = original.match(/type=["']([^"']+)["']/i);
+        const inputType = typeMatch?.[1]?.toLowerCase() || 'text';
+
+        if (inputType === 'submit') {
+          const valueMatch = original.match(/value=["']([^"']*)["']/i);
+          const hasValue = valueMatch && valueMatch[1].trim().length > 0;
+          if (!hasValue) {
+            const fixed = original.replace(/value=["'][^"']*["']/, 'value="Submit"')
+              || original.replace(/<input/, '<input value="Submit"');
+            return {
+              file: 'index.html',
+              originalCode: original,
+              fixedCode: fixed.includes('value="Submit"') ? fixed : original.replace(/<input/, '<input value="Submit"'),
+              explanation: 'Added "Submit" as button text for accessibility',
+            };
+          }
+        }
+
+        const label = inferFormLabel(original);
+        const inputId = `field-${label.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20)}`;
+
+        let fixed = original;
+        if (!original.includes(' id=')) {
+          fixed = fixed.replace(/<(input|select|textarea)/, `<$1 id="${inputId}"`);
+        }
+        if (!original.includes('aria-label')) {
+          fixed = fixed.replace(/<(input|select|textarea)/, `<$1 aria-label="${label}"`);
+        }
+
         return {
           file: 'index.html',
           originalCode: original,
-          fixedCode: `<label for="${inputId}">[Field label]</label>\n${fixed}`,
-          explanation: 'Added associated label element for form field accessibility',
+          fixedCode: fixed,
+          explanation: `Added aria-label "${label}" for screen reader accessibility`,
         };
       }
       return null;
     },
-    'button-names': (issue) => {
+    'button-names': (issue, html) => {
+      const label = inferButtonLabel(issue.element, html);
+      
+      if (issue.element.includes('<input') && issue.element.includes('type="submit"')) {
+        const hasEmptyValue = issue.element.match(/value=["']\s*["']/);
+        if (hasEmptyValue) {
+          return {
+            file: 'index.html',
+            originalCode: issue.element,
+            fixedCode: issue.element.replace(/value=["']\s*["']/, 'value="Submit"'),
+            explanation: 'Added "Submit" as button text for accessibility',
+          };
+        }
+        return {
+          file: 'index.html',
+          originalCode: issue.element,
+          fixedCode: issue.element.replace(/<input/, `<input aria-label="${label}"`),
+          explanation: `Added aria-label "${label}" to describe button purpose`,
+        };
+      }
+      
       return {
         file: 'index.html',
         originalCode: issue.element,
-        fixedCode: issue.element.replace(/<button/, '<button aria-label="[Button description]"'),
-        explanation: 'Added aria-label to button for screen reader accessibility',
+        fixedCode: issue.element.replace(/<button/, `<button aria-label="${label}"`),
+        explanation: `Added aria-label "${label}" to describe button purpose`,
       };
     },
     'link-text': (issue) => {
       if (issue.description.includes('no accessible text')) {
+        const label = inferLinkDestination(issue.element);
         return {
           file: 'index.html',
           originalCode: issue.element,
-          fixedCode: issue.element.replace(/<a/, '<a aria-label="[Link destination description]"'),
-          explanation: 'Added aria-label to link for screen reader accessibility',
+          fixedCode: issue.element.replace(/<a/, `<a aria-label="${label}"`),
+          explanation: `Added aria-label "${label}" to describe link destination`,
         };
       }
       return null;
@@ -614,7 +853,7 @@ export function generateDeterministicFix(issue: AccessibilityIssue, html: string
           file: 'index.html',
           originalCode: '<html>',
           fixedCode: '<html lang="en">',
-          explanation: 'Added lang attribute to HTML element for screen reader language detection',
+          explanation: 'Added lang="en" for screen reader language detection',
         };
       }
       if (issue.description.includes('empty')) {
@@ -622,7 +861,7 @@ export function generateDeterministicFix(issue: AccessibilityIssue, html: string
           file: 'index.html',
           originalCode: '<html lang="">',
           fixedCode: '<html lang="en">',
-          explanation: 'Set lang attribute value for screen reader language detection',
+          explanation: 'Set lang attribute to "en" for screen reader language detection',
         };
       }
       return null;
@@ -633,7 +872,7 @@ export function generateDeterministicFix(issue: AccessibilityIssue, html: string
           file: 'index.html',
           originalCode: '<head>',
           fixedCode: '<head>\n  <meta name="viewport" content="width=device-width, initial-scale=1">',
-          explanation: 'Added viewport meta tag for responsive design',
+          explanation: 'Added responsive viewport meta tag',
         };
       }
       if (issue.description.includes('disables')) {
@@ -641,85 +880,95 @@ export function generateDeterministicFix(issue: AccessibilityIssue, html: string
           file: 'index.html',
           originalCode: issue.element,
           fixedCode: '<meta name="viewport" content="width=device-width, initial-scale=1">',
-          explanation: 'Removed user-scalable=no to allow zooming for accessibility',
+          explanation: 'Removed user-scalable restriction to allow zooming',
         };
       }
       return null;
     },
-    'meta-title': (issue) => {
+    'meta-title': (issue, html) => {
       if (issue.description.includes('missing')) {
+        const title = inferPageTitle(html);
         return {
           file: 'index.html',
           originalCode: '<head>',
-          fixedCode: '<head>\n  <title>[Page Title - Site Name]</title>',
-          explanation: 'Added title element for SEO and accessibility',
+          fixedCode: `<head>\n  <title>${title}</title>`,
+          explanation: `Added page title: "${title}"`,
         };
       }
       return null;
     },
-    'meta-description': (issue) => {
+    'meta-description': (issue, html) => {
       if (issue.description.includes('missing')) {
+        const description = inferMetaDescription(html);
         return {
           file: 'index.html',
           originalCode: '<head>',
-          fixedCode: '<head>\n  <meta name="description" content="[A descriptive summary of this page content for search engines]">',
+          fixedCode: `<head>\n  <meta name="description" content="${description}">`,
           explanation: 'Added meta description for SEO',
         };
       }
       return null;
     },
-    'og-tags': (issue) => {
+    'og-tags': (issue, html) => {
       const missing = issue.description.match(/Missing Open Graph tags: (.+)/)?.[1] || '';
-      const tags = missing.split(', ').map(tag => {
-        const defaults: Record<string, string> = {
-          'og:title': '[Page Title]',
-          'og:description': '[Page description for social sharing]',
-          'og:image': '[https://example.com/image.jpg]',
-        };
-        return `<meta property="${tag}" content="${defaults[tag] || '[value]'}">`;
-      }).join('\n  ');
-      
+      const title = inferPageTitle(html);
+      const description = inferMetaDescription(html);
+
+      const tagValues: Record<string, string> = {
+        'og:title': title,
+        'og:description': description,
+        'og:image': '/og-image.png',
+      };
+
+      const tags = missing.split(', ').map(tag =>
+        `<meta property="${tag}" content="${tagValues[tag] || ''}">`
+      ).join('\n  ');
+
       return {
         file: 'index.html',
         originalCode: '<head>',
         fixedCode: `<head>\n  ${tags}`,
-        explanation: 'Added Open Graph meta tags for rich social media previews',
+        explanation: 'Added Open Graph meta tags for social media previews',
       };
     },
-    'clickable-divs': (issue) => {
+    'clickable-divs': (issue, html) => {
+      const label = inferButtonLabel(issue.element, html);
+      const fixed = issue.element
+        .replace(/<div/, `<button type="button" aria-label="${label}"`)
+        .replace(/<\/div>/, '</button>');
       return {
         file: 'index.html',
         originalCode: issue.element,
-        fixedCode: issue.element.replace(/<div/, '<button type="button"').replace(/<\/div>/, '</button>'),
-        explanation: 'Changed clickable div to button element for keyboard accessibility',
+        fixedCode: fixed,
+        explanation: `Converted to semantic button with aria-label "${label}"`,
       };
     },
   };
 
-  const ruleId = Object.keys(fixes).find(key => issue.id.startsWith(key) || issue.description.toLowerCase().includes(key.replace('-', ' ')));
-  
   for (const [key, fixFn] of Object.entries(fixes)) {
-    if (issue.wcagRule?.includes(key) || issue.description.toLowerCase().includes(key.replace(/-/g, ' ')) || 
+    if (issue.wcagRule?.includes(key) || issue.description.toLowerCase().includes(key.replace(/-/g, ' ')) ||
         issue.selector.includes(key) || key === getRuleIdFromIssue(issue)) {
       const fix = fixFn(issue, html);
       if (fix) return fix;
     }
   }
-  
+
   return null;
 }
 
 function getRuleIdFromIssue(issue: AccessibilityIssue): string {
-  if (issue.selector.includes('img') || issue.description.includes('alt')) return 'img-alt';
-  if (issue.selector.includes('input') || issue.selector.includes('select') || issue.description.includes('label')) return 'form-labels';
-  if (issue.selector.includes('button') || issue.description.includes('button')) return 'button-names';
-  if (issue.selector.includes('a[href]') || issue.description.includes('link')) return 'link-text';
-  if (issue.selector === 'html' && issue.description.includes('lang')) return 'lang-attribute';
-  if (issue.selector.includes('viewport')) return 'meta-viewport';
-  if (issue.selector === 'title' || issue.description.includes('title')) return 'meta-title';
-  if (issue.selector.includes('description')) return 'meta-description';
-  if (issue.description.includes('Open Graph')) return 'og-tags';
-  if (issue.description.includes('div') && issue.description.includes('button')) return 'clickable-divs';
+  if (issue.selector.includes('img') || issue.description.toLowerCase().includes('alt')) return 'img-alt';
+  if ((issue.selector.includes('input') || issue.selector.includes('select') || issue.selector.includes('textarea')) && 
+      issue.description.toLowerCase().includes('label')) return 'form-labels';
+  if (issue.description.toLowerCase().includes('clickable') && issue.description.toLowerCase().includes('div')) return 'clickable-divs';
+  if ((issue.selector.includes('button') || issue.description.toLowerCase().includes('button')) && 
+      issue.description.toLowerCase().includes('accessible name')) return 'button-names';
+  if (issue.selector.includes('a') || issue.description.toLowerCase().includes('link text')) return 'link-text';
+  if (issue.selector === 'html' && issue.description.toLowerCase().includes('lang')) return 'lang-attribute';
+  if (issue.selector.includes('viewport') || issue.description.toLowerCase().includes('viewport')) return 'meta-viewport';
+  if (issue.selector === 'title' || issue.description.toLowerCase().includes('page') && issue.description.toLowerCase().includes('title')) return 'meta-title';
+  if (issue.selector.includes('description') || issue.description.toLowerCase().includes('meta description')) return 'meta-description';
+  if (issue.description.toLowerCase().includes('open graph')) return 'og-tags';
   return '';
 }
 

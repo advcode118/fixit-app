@@ -9,8 +9,8 @@ AI-powered accessibility and SEO auditor that scans any website, identifies issu
 - **Live Website Auditing** - Paste any URL and get a comprehensive accessibility/SEO audit
 - **Real-time Activity Feed** - Watch the AI analyze your site with streaming progress updates
 - **Intelligent Issue Detection** - Checks for WCAG violations, missing alt text, form labels, heading order, color contrast, SEO meta tags, and more
-- **AI-Powered Fixes** - Uses LLM (X.AI Grok or OpenAI) to rank issues and generate smart fixes
-- **Deterministic Fallback** - Works without an LLM key using rule-based fixes
+- **AI-Powered Fixes** - Uses LLM (Anthropic Claude, X.AI Grok, or OpenAI) to rank issues and generate context-aware fixes with real labels, alt text, and descriptions
+- **Smart Deterministic Fallback** - Works without an LLM key using intelligent rule-based fixes that infer labels from placeholders, names, and surrounding context
 - **Interactive Diff Viewer** - View before/after code changes with syntax highlighting
 - **Visual Preview** - Side-by-side slider comparing original vs fixed versions
 - **One-Click PR Creation** - Automatically create a GitHub PR with all fixes applied
@@ -21,8 +21,9 @@ AI-powered accessibility and SEO auditor that scans any website, identifies issu
 - **Framework**: Next.js 15 (App Router, TypeScript)
 - **Styling**: Tailwind CSS 4
 - **Animations**: Framer Motion
+- **HTML Parser**: linkedom (lightweight, SSR-compatible)
 - **Accessibility Checks**: Custom rule engine inspired by axe-core
-- **LLM Integration**: X.AI (Grok) / OpenAI compatible API
+- **LLM Integration**: Anthropic Claude (primary), X.AI Grok, OpenAI (fallbacks)
 - **Deployment**: Vercel-ready
 
 ## Getting Started
@@ -32,7 +33,7 @@ AI-powered accessibility and SEO auditor that scans any website, identifies issu
 - Node.js 18+
 - npm or yarn
 - GitHub Personal Access Token (for PR creation)
-- (Optional) X.AI or OpenAI API key for enhanced fixes
+- (Optional) Anthropic, X.AI, or OpenAI API key for enhanced fixes
 
 ### Installation
 
@@ -61,7 +62,9 @@ cp .env.example .env.local
 # Required for PR creation
 GITHUB_TOKEN=ghp_your_token_here
 
-# Optional - for AI-powered analysis
+# Optional - for AI-powered analysis (in priority order)
+ANTHROPIC_API_KEY=sk-ant-your_key_here  # Recommended
+# or
 XAI_API_KEY=xai_your_key_here
 # or
 OPENAI_API_KEY=sk-your_key_here
@@ -80,8 +83,18 @@ npm run dev
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GITHUB_TOKEN` | Yes (for PR) | GitHub Personal Access Token with `repo` scope |
-| `XAI_API_KEY` | No | X.AI (Grok) API key for AI-powered fixes |
-| `OPENAI_API_KEY` | No | OpenAI API key (fallback if X.AI not configured) |
+| `ANTHROPIC_API_KEY` | No | Anthropic Claude API key (primary, recommended) |
+| `ANTHROPIC_MODEL` | No | Claude model to use (defaults to `claude-sonnet-4-5-20250514`) |
+| `XAI_API_KEY` | No | X.AI (Grok) API key (secondary fallback) |
+| `OPENAI_API_KEY` | No | OpenAI API key (tertiary fallback) |
+
+### LLM Provider Priority
+
+FixIt checks for API keys in this order:
+1. **Anthropic Claude** (recommended) - Best for context-aware fixes
+2. **X.AI Grok** - Fast alternative
+3. **OpenAI** - Widely available fallback
+4. **Deterministic** - No API key required, uses smart inference
 
 ### Getting API Keys
 
@@ -90,6 +103,12 @@ npm run dev
 2. Click "Generate new token (classic)"
 3. Select the `repo` scope
 4. Copy the token to `GITHUB_TOKEN`
+
+#### Anthropic API Key (Recommended)
+1. Sign up at [console.anthropic.com](https://console.anthropic.com/)
+2. Navigate to API Keys
+3. Create a new key
+4. Copy to `ANTHROPIC_API_KEY`
 
 #### X.AI API Key
 1. Sign up at [x.ai](https://x.ai)
@@ -107,7 +126,7 @@ npm run dev
 
 ### One-Click Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/fixit&env=GITHUB_TOKEN,XAI_API_KEY)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/fixit&env=GITHUB_TOKEN,ANTHROPIC_API_KEY)
 
 ### Manual Deployment
 
@@ -119,6 +138,7 @@ npm run dev
 
 4. Add environment variables in the Vercel dashboard:
    - `GITHUB_TOKEN` (required)
+   - `ANTHROPIC_API_KEY` (recommended)
    - `XAI_API_KEY` (optional)
    - `OPENAI_API_KEY` (optional)
 
@@ -156,7 +176,7 @@ Each issue includes:
 - WCAG rule reference
 - Plain English explanation
 - Impact on users
-- Auto-generated fix (when possible)
+- Auto-generated fix with context-aware labels (never placeholders!)
 
 ## API Endpoints
 

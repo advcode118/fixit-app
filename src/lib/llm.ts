@@ -1,17 +1,31 @@
 import { AccessibilityIssue, CodeFix } from '@/types';
 
+type LLMProvider = 'anthropic' | 'xai' | 'openai';
+
 interface LLMConfig {
+  provider: LLMProvider;
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
 function getLLMConfig(): LLMConfig | null {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const xaiKey = process.env.XAI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
+  if (anthropicKey) {
+    return {
+      provider: 'anthropic',
+      apiKey: anthropicKey,
+      baseUrl: 'https://api.anthropic.com/v1',
+      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250514',
+    };
+  }
+
   if (xaiKey) {
     return {
+      provider: 'xai',
       apiKey: xaiKey,
       baseUrl: 'https://api.x.ai/v1',
       model: 'grok-beta',
@@ -20,6 +34,7 @@ function getLLMConfig(): LLMConfig | null {
 
   if (openaiKey) {
     return {
+      provider: 'openai',
       apiKey: openaiKey,
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-4o-mini',
@@ -29,7 +44,55 @@ function getLLMConfig(): LLMConfig | null {
   return null;
 }
 
-async function callLLM(messages: Array<{ role: string; content: string }>, config: LLMConfig): Promise<string> {
+async function callLLM(
+  messages: Array<{ role: string; content: string }>,
+  config: LLMConfig
+): Promise<string> {
+  if (config.provider === 'anthropic') {
+    return callAnthropic(messages, config);
+  }
+  return callOpenAICompatible(messages, config);
+}
+
+async function callAnthropic(
+  messages: Array<{ role: string; content: string }>,
+  config: LLMConfig
+): Promise<string> {
+  const systemMessage = messages.find(m => m.role === 'system');
+  const userMessages = messages.filter(m => m.role !== 'system');
+
+  const response = await fetch(`${config.baseUrl}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 8192,
+      system: systemMessage?.content || 'You are an expert accessibility and SEO consultant.',
+      messages: userMessages.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Anthropic API error: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const textBlock = data.content?.find((block: { type: string }) => block.type === 'text');
+  return textBlock?.text || '';
+}
+
+async function callOpenAICompatible(
+  messages: Array<{ role: string; content: string }>,
+  config: LLMConfig
+): Promise<string> {
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -71,25 +134,36 @@ export async function rankAndExplainIssues(
       severity: issue.severity,
       wcagRule: issue.wcagRule,
       description: issue.description,
-      element: issue.element.substring(0, 100),
+      element: issue.element.substring(0, 150),
     }));
 
-    const prompt = `You are an accessibility expert. Analyze these accessibility/SEO issues found on a webpage and:
-1. Rank them by actual impact and ease of fix (most important first)
-2. Provide a clearer, user-friendly explanation for each
+    const systemPrompt = `You are an expert web accessibility consultant. Your task is to analyze accessibility and SEO issues, rank them by real-world impact, and provide clear explanations that non-technical stakeholders can understand.`;
 
-Issues found:
+    const userPrompt = `Analyze these accessibility/SEO issues found on a webpage:
+
 ${JSON.stringify(issuesSummary, null, 2)}
 
+Rank them by:
+1. Actual impact on users with disabilities
+2. SEO importance
+3. Ease of fix (quick wins first among equal severity)
+
+For each issue, provide:
+- A clearer, jargon-free explanation
+- The real-world impact on users
+
 Respond with a JSON array where each object has:
-- "index": original issue index
-- "enhancedDescription": clearer explanation of the issue
-- "enhancedImpact": why this matters to users
+- "index": original issue index (number)
+- "enhancedDescription": clearer explanation (string)
+- "enhancedImpact": why this matters to real users (string)
 
-Only return valid JSON, no markdown.`;
+Return ONLY valid JSON, no markdown code fences or explanations.`;
 
-    const response = await callLLM([{ role: 'user', content: prompt }], config);
-    
+    const response = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ], config);
+
     const cleaned = response.replace(/```json\n?|\n?```/g, '').trim();
     const enhanced = JSON.parse(cleaned) as Array<{
       index: number;
@@ -133,7 +207,7 @@ export async function generateLLMFixes(
   }
 
   try {
-    const fixableIssues = issues.filter(i => 
+    const fixableIssues = issues.filter(i =>
       i.severity === 'critical' || i.severity === 'serious'
     ).slice(0, 10);
 
@@ -141,12 +215,23 @@ export async function generateLLMFixes(
       return { fixes: [], llmAvailable: true };
     }
 
-    const prompt = `You are an accessibility expert. Generate code fixes for these accessibility issues.
+    const systemPrompt = `You are an expert web accessibility engineer. Generate precise, context-aware fixes for accessibility issues.
 
-HTML snippet (truncated):
-${html.substring(0, 3000)}
+CRITICAL RULES:
+1. NEVER use placeholder text like "[Field label]", "[Description]", "[Alt text]", etc.
+2. ALWAYS infer meaningful text from context: surrounding text, placeholder attributes, nearby headings, form context, image filename/URL, page content
+3. For images: Describe what the image likely shows based on its filename, URL path, or surrounding content
+4. For form fields: Use the placeholder text, nearby labels, or field purpose as the label
+5. For buttons: Infer purpose from surrounding text, form context, or icon meaning
+6. For links: Make link text describe the destination based on href and context
+7. Keep fixes minimal - only change what's necessary to fix the issue`;
 
-Issues to fix:
+    const userPrompt = `Fix these accessibility issues. The HTML context is provided to help you infer appropriate labels, alt text, and descriptions.
+
+PAGE HTML (for context):
+${html.substring(0, 6000)}
+
+ISSUES TO FIX:
 ${JSON.stringify(fixableIssues.map(i => ({
   id: i.id,
   description: i.description,
@@ -155,17 +240,20 @@ ${JSON.stringify(fixableIssues.map(i => ({
   wcagRule: i.wcagRule,
 })), null, 2)}
 
-For each issue, provide a fix. Respond with a JSON array where each object has:
+Generate fixes with REAL, CONTEXTUAL text - no placeholders. Respond with a JSON array where each object has:
 - "issueId": the issue id
 - "file": "index.html"
-- "originalCode": the exact code that needs changing (from the element field)
-- "fixedCode": the corrected code
-- "explanation": brief explanation of the fix
+- "originalCode": the exact code that needs changing
+- "fixedCode": the corrected code with real, meaningful text inferred from context
+- "explanation": brief explanation of what you changed and why
 
-Only return valid JSON, no markdown. Focus on practical, minimal fixes.`;
+Return ONLY valid JSON, no markdown code fences.`;
 
-    const response = await callLLM([{ role: 'user', content: prompt }], config);
-    
+    const response = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ], config);
+
     const cleaned = response.replace(/```json\n?|\n?```/g, '').trim();
     const llmFixes = JSON.parse(cleaned) as Array<{
       issueId: string;
@@ -200,52 +288,15 @@ export async function generateFixedHTML(
   issues: AccessibilityIssue[],
   fixes: CodeFix[]
 ): Promise<{ fixedHtml: string; llmAvailable: boolean }> {
-  const config = getLLMConfig();
-
-  if (!config || fixes.length === 0) {
-    let fixedHtml = html;
-    for (const fix of fixes) {
-      if (fix.originalCode && fix.fixedCode) {
-        fixedHtml = fixedHtml.replace(fix.originalCode, fix.fixedCode);
-      }
-    }
-    return { fixedHtml, llmAvailable: false };
+  if (fixes.length === 0) {
+    return { fixedHtml: html, llmAvailable: false };
   }
 
-  try {
-    const prompt = `You are an accessibility expert. Apply these fixes to the HTML:
-
-Original HTML:
-${html}
-
-Fixes to apply:
-${JSON.stringify(fixes, null, 2)}
-
-Return ONLY the complete fixed HTML with all fixes applied. No explanations, just the HTML.`;
-
-    const response = await callLLM([{ role: 'user', content: prompt }], config);
-    
-    const fixedHtml = response.replace(/```html\n?|\n?```/g, '').trim();
-    
-    if (fixedHtml.includes('<html') || fixedHtml.includes('<!DOCTYPE')) {
-      return { fixedHtml, llmAvailable: true };
+  let fixedHtml = html;
+  for (const fix of fixes) {
+    if (fix.originalCode && fix.fixedCode) {
+      fixedHtml = fixedHtml.replace(fix.originalCode, fix.fixedCode);
     }
-
-    let manualFixedHtml = html;
-    for (const fix of fixes) {
-      if (fix.originalCode && fix.fixedCode) {
-        manualFixedHtml = manualFixedHtml.replace(fix.originalCode, fix.fixedCode);
-      }
-    }
-    return { fixedHtml: manualFixedHtml, llmAvailable: true };
-  } catch (error) {
-    console.error('LLM HTML generation failed:', error);
-    let fixedHtml = html;
-    for (const fix of fixes) {
-      if (fix.originalCode && fix.fixedCode) {
-        fixedHtml = fixedHtml.replace(fix.originalCode, fix.fixedCode);
-      }
-    }
-    return { fixedHtml, llmAvailable: false };
   }
+  return { fixedHtml, llmAvailable: true };
 }
